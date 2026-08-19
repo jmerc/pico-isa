@@ -6,6 +6,7 @@
 #include "isa.h"
 #include "isa_irq.h"
 #include "uart.h"
+#include "vga.h"
 
 #define TX_BUFFER_SIZE 128
 
@@ -105,7 +106,7 @@ static void print_value_details(uint8_t value)
     putchar('\n');
 }
 
-static void handle_command(isa_controller_t *isa, uart_controller_t *uart, tx_buffer_t *tx_buffer, char *line)
+static void handle_command(isa_controller_t *isa, uart_controller_t *uart, vga_controller_t *vga, tx_buffer_t *tx_buffer, char *line)
 {
     unsigned int address = 0;
     unsigned int value = 0;
@@ -199,12 +200,45 @@ static void handle_command(isa_controller_t *isa, uart_controller_t *uart, tx_bu
         return;
     }
 
+    // VGA Init command: "vga init"
+    if (strcmp(line, "vga init") == 0) {
+        vga_controller_init(vga, isa);
+        printf("vga init complete. Available: %s\n", vga->available ? "yes" : "no");
+        return;
+    }
+
+    // VGA Indexed Read command: "vi <addr_hex> <data_hex> <index_hex>"
+    if (strncmp(line, "vi ", 3) == 0) {
+        unsigned int index_addr = 0;
+        unsigned int data_addr = 0;
+        unsigned int index = 0;
+        if (sscanf(line, "vi %x %x %x", &index_addr, &data_addr, &index) == 3) {
+            uint8_t read_value = vga_read_reg(vga, index_addr, data_addr, index);
+            printf("vi 0x%03X 0x%03X 0x%02X -> ", index_addr, data_addr, index);
+            print_value_details(read_value);
+            return;
+        }
+    }
+
+    // VGA Indexed Write command: "vo <addr_hex> <data_hex> <index_hex> <value_hex>"
+    if (strncmp(line, "vo ", 3) == 0) {
+        unsigned int index_addr = 0;
+        unsigned int data_addr = 0;
+        unsigned int index = 0;
+        unsigned int value = 0;
+        if (sscanf(line, "vo %x %x %x %x", &index_addr, &data_addr, &index, &value) == 4) {
+            vga_write_reg(vga, index_addr, data_addr, index, value);
+            printf("vo 0x%03X 0x%03X 0x%02X 0x%02X\n", index_addr, data_addr, index, value);
+            return;
+        }
+    }
+
     // Help command: "help"
     if (strcmp(line, "help") == 0) {
         printf("Commands:");
-        printf("ISA: i <addr_hex>, o <addr_hex> <value_hex>, d <addr_hex>, e <addr_hex> <value_hex>, reset");
-        printf("UART: uart init, out <string>");
-        printf("VGA: vi <addr_hex> <index_hex>, vo <addr_hex> <index_hex> <value_hex>");
+        printf("ISA: i <addr_hex>, o <addr_hex> <value_hex>, mem: d <addr_hex>, e <addr_hex> <value_hex>, reset\n");
+        printf("UART: uart init, out <string>\n");
+        printf("VGA: vga init, vi <addr_hex> <data_hex> <index_hex>, vo <addr_hex> <data_hex> <index_hex> <value_hex>\n");
         
         return;
     }
@@ -218,6 +252,7 @@ int main(void)
 {
     isa_controller_t isa;
     uart_controller_t uart;
+    vga_controller_t vga;
     tx_buffer_t tx_buffer = {0};
     stdio_queue_t stdio_queue;
     char uart_chunk[17];
@@ -241,6 +276,8 @@ int main(void)
     uart_controller_init(&uart, &isa, 0x3F8u);
     isa_irq_init(&isa);
     isa_irq_register(uart_handle_interrupt, &uart);
+
+    vga_controller_init(&vga, &isa);
 
     gpio_init(PICO_DEFAULT_LED_PIN);
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
@@ -274,7 +311,7 @@ int main(void)
             if (ch == '\r' || ch == '\n') {
                 line[line_index] = '\0';
                 if (line_index > 0) {
-                    handle_command(&isa, &uart, &tx_buffer, line);
+                    handle_command(&isa, &uart, &vga, &tx_buffer, line);
                 }
                 line_index = 0;
             } else if (line_index < sizeof(line) - 1) {

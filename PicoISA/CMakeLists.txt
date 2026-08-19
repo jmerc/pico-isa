@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(PicoISA PicoISA.c isa.c isa_irq.c uart.c)
+add_executable(PicoISA PicoISA.c isa.c isa_irq.c uart.c vga.c)
 
 pico_set_program_name(PicoISA "PicoISA")
 pico_set_program_version(PicoISA "0.1")
@@ -47,7 +47,7 @@ pico_enable_stdio_usb(PicoISA 1)
 # Add the standard library to the build
 target_link_libraries(PicoISA
         pico_stdlib
-        pico_usb_reset_interface)
+        pico_usb_reset)
 
 # Add the standard include files to the build
 target_include_directories(PicoISA PRIVATE
